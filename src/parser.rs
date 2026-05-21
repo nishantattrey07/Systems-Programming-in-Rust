@@ -1,4 +1,5 @@
 use crate::database::Database;
+use crate::types::ProtocolError;
 
 #[derive(Debug)]
 pub(crate) enum Command {
@@ -20,31 +21,32 @@ pub(crate) enum Command {
 
 
 
-pub(crate) fn execute_command(command:Command,db:&mut Database)->std::io::Result<String>{
+pub(crate) fn execute_command(command:Command,db:&mut Database)->String{
     match command {
         Command::Set{key,value} => {
             db.set(key,value);
-            Ok("Ok".to_string())
+            "OK".to_string()
                
             
         },
         Command::Get { key } => {
             match db.get(&key){
                 Some(data) => {
-                    let response = format!("Value: {}",data);
-                    Ok(response)
+                    let response = format!("VALUE {}",data);
+                    response
                     
                 },
                 None => {
-                    Ok("NOT_FOUND".to_string())
+                    "NOT_FOUND".to_string()
+                    
                 }
             }
         },
         Command::Delete { key } =>{
             if db.delete(&key){
-                Ok("Ok".to_string())
+                "OK".to_string()
             } else{
-                Ok("NOT_FOUND".to_string())
+                "NOT_FOUND".to_string()
             }
         }
     }
@@ -53,10 +55,8 @@ pub(crate) fn execute_command(command:Command,db:&mut Database)->std::io::Result
 
 
 
-pub(crate) fn process_command(input: &str) -> Result<Command, String> {
+pub(crate) fn process_command(input: &str) -> Result<Command, ProtocolError> {
     // println!("COMMAND: {}", input);
-
-    
     let input = input.trim_start();
 
     // split command from rest
@@ -64,23 +64,25 @@ pub(crate) fn process_command(input: &str) -> Result<Command, String> {
 
     let command = split_data
         .next()
-        .ok_or("Command is empty".to_string())?;
+        .ok_or(ProtocolError::EmptyCommand)?;
 
     match command.to_uppercase().as_str() {
         "SET" => {
             let rest = split_data
                 .next()
-                .ok_or("SET requires key and value".to_string())?;
+                .ok_or(ProtocolError::MissingKey)?;
+
+            
 
             let mut set_parts = rest.trim_start().splitn(2, ' ');
 
             let key = set_parts
                 .next()
-                .ok_or("Missing key".to_string())?;
+                .ok_or(ProtocolError::MissingKey)?;
 
             let value = set_parts
                 .next()
-                .ok_or("Missing value".to_string())?;
+                .ok_or(ProtocolError::MissingValue)?;
 
             Ok(Command::Set {
                 key: key.to_string(),
@@ -89,25 +91,42 @@ pub(crate) fn process_command(input: &str) -> Result<Command, String> {
         }
 
         "GET" => {
-            let key = split_data
-                .next()
-                .ok_or("GET requires key".to_string())?;
 
-            Ok(Command::Get {
-                key: key.trim_start().to_string(),
-            })
+            // 1. Get the raw string segment containing the key
+            let raw_key = split_data
+                .next()
+                .ok_or(ProtocolError::MissingKey)?;
+            
+            // 2. Parse it to ensure it contains exactly one word
+            let mut t = raw_key.split_whitespace();
+            
+            let key = match (t.next(), t.next()) {
+                (Some(val), None) => val.trim_start().to_string(), // Exactly one word found
+                _ => return Err(ProtocolError::InvalidFormat(input.to_string())), 
+            };
+            
+            // 3. Return the command successfully
+            Ok(Command::Get { key })
         }
 
         "DELETE" => {
-            let key = split_data
+            let raw_key = split_data
                 .next()
-                .ok_or("DELETE requires key".to_string())?;
+                .ok_or(ProtocolError::MissingKey)?;
+
+            let mut t = raw_key.split_whitespace();
+
+            let key = match (t.next(),t.next()) {
+                (Some(val),None) => val.trim_start().to_string(),
+
+                _ => return Err(ProtocolError::InvalidFormat(input.to_string())), 
+            };
 
             Ok(Command::Delete {
                 key: key.trim_start().to_string(),
             })
         }
 
-        _ => Err("Unknown command".to_string()),
+        _ => Err(ProtocolError::UnknownCommand(command.to_string())),
     }
 }

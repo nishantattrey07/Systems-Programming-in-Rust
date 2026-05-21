@@ -34,22 +34,19 @@ fn handle_client(stream: &mut TcpStream, db:&mut Database) -> std::io::Result<()
 
               let response = process_command(&command);
 
+              
+
               match response {
                   Ok(command) => {
                       // println!("command: {:#?}",command);
-                      match execute_command(command, db){
-                          Ok(data)=> {
-                              stream.write_all(data.as_bytes()).expect("Failed to write to stream");
-                              stream.flush().expect("Failed to flush stream");
-                          },
-                          Err(err) => {
-                              eprintln!("{}",err);
-                              
-                          }
-                      }
+                    let data = execute_command(command, db);
+                    stream.write_all(data.as_bytes()).expect("Failed to write to stream");
+                    stream.write_all(b"\n")?;
+                
                   },
                   Err(err) => {
-                      eprintln!("{}",err);
+                      stream.write_all(err.to_response().as_bytes()).expect("Failed to write to stream");
+                      stream.write_all(b"\n")?;
                   }
               }
                 // ready for next command
