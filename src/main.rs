@@ -1,4 +1,4 @@
-use std::{char, io::Read, net::{TcpListener, TcpStream}};
+use std::{char, collections::HashMap, io::{Read, Write}, net::{TcpListener, TcpStream}};
 
 // enum Command<'a> {
 //     Set {
@@ -31,8 +31,70 @@ enum Command {
     },
 }
 
+
+struct Database {
+    map: HashMap<String, String>,
+}
+
+impl Database {
+    fn new() -> Self {
+            Database {
+                map: HashMap::new(),
+            }
+    }
+    
+    fn set(&mut self, key: String, value: String) {
+             let _ = self.map.insert(key, value);     
+    }
+
+    fn get(&self, key: &str) -> Option<&String>{
+        self.map.get(key)
+    }
+
+    fn delete(&mut self, key: &str) -> bool{
+        match self.map.remove(key){
+            Some(_) => {return true},
+            
+            None => {return false}
+        }
+        
+    }
+}
+
+
+fn execute_command(command:Command,db:&mut Database)->std::io::Result<String>{
+    match command {
+        Command::Set{key,value} => {
+            db.set(key,value);
+            Ok("Ok".to_string())
+               
+            
+        },
+        Command::Get { key } => {
+            match db.get(&key){
+                Some(data) => {
+                    let response = format!("Value: {}",data);
+                    Ok(response)
+                    
+                },
+                None => {
+                    Ok("NOT_FOUND".to_string())
+                }
+            }
+        },
+        Command::Delete { key } =>{
+            if db.delete(&key){
+                Ok("Ok".to_string())
+            } else{
+                Ok("NOT_FOUND".to_string())
+            }
+        }
+    }
+    
+}
+
 fn process_command(input: &str) -> Result<Command, String> {
-    println!("COMMAND: {}", input);
+    // println!("COMMAND: {}", input);
 
     
     let input = input.trim_start();
@@ -72,7 +134,7 @@ fn process_command(input: &str) -> Result<Command, String> {
                 .ok_or("GET requires key".to_string())?;
 
             Ok(Command::Get {
-                key: key.to_string(),
+                key: key.trim_start().to_string(),
             })
         }
 
@@ -82,7 +144,7 @@ fn process_command(input: &str) -> Result<Command, String> {
                 .ok_or("DELETE requires key".to_string())?;
 
             Ok(Command::Delete {
-                key: key.to_string(),
+                key: key.trim_start().to_string(),
             })
         }
 
@@ -90,10 +152,10 @@ fn process_command(input: &str) -> Result<Command, String> {
     }
 }
 
-fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
+fn handle_client(stream: &mut TcpStream, db:&mut Database) -> std::io::Result<()> {
     let mut buf = [0u8; 1024];
 
-    // persistent accumulator
+    
     let mut bytes: Vec<u8> = vec![];
 
     'maintain_connection: loop {
@@ -122,7 +184,17 @@ fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
 
               match response {
                   Ok(command) => {
-                      println!("command: {:#?}",command);
+                      // println!("command: {:#?}",command);
+                      match execute_command(command, db){
+                          Ok(data)=> {
+                              stream.write_all(data.as_bytes()).expect("Failed to write to stream");
+                              stream.flush().expect("Failed to flush stream");
+                          },
+                          Err(err) => {
+                              eprintln!("{}",err);
+                              
+                          }
+                      }
                   },
                   Err(err) => {
                       eprintln!("{}",err);
@@ -139,12 +211,15 @@ fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
 
 fn tcp_listener() -> std::io::Result<()>{
 
+    let mut db =  Database::new();
+
+
     let listener = TcpListener::bind("127.0.0.1:8080")?;
 
     for stream in listener.incoming() {
         println!("new connection");
         let mut stream = stream?;
-        handle_client(&mut stream)?;
+        handle_client(&mut stream,&mut db)?;
     }
 
     Ok(())
