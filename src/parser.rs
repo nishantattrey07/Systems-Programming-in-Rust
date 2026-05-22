@@ -58,6 +58,9 @@ pub(crate) fn execute_command(command:Command,db:&mut Database)->String{
 pub(crate) fn process_command(input: &str) -> Result<Command, ProtocolError> {
     // println!("COMMAND: {}", input);
     let input = input.trim_start();
+    if input.is_empty() {
+        return Err(ProtocolError::EmptyCommand);
+    }
 
     // split command from rest
     let mut split_data = input.splitn(2, ' ');
