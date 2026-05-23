@@ -315,14 +315,31 @@ run_test(
 )
 
 
-def test_disconnect():
-    s.send(b"SET unfinished")
-    time.sleep(0.5)
+def test_disconnect_mid_command():
+    # separate socket for disconnect test
+    temp = socket.socket()
+    temp.connect((HOST, PORT))
+
+    print("\nSending incomplete command and disconnecting...")
+    temp.send(b"SET unfinished")
+
+    time.sleep(0.2)
+
+    # abrupt disconnect before newline
+    temp.close()
+
+    time.sleep(0.2)
+
+    # verify no mutation happened
+    assert_response(
+        b"GET unfinished\n",
+        "NOT_FOUND"
+    )
 
 
 run_test(
-    "TEST 20 — Disconnect mid-command",
-    test_disconnect
+    "TEST 20 — Disconnect mid-command (no mutation)",
+    test_disconnect_mid_command
 )
 
 separator("SUMMARY")
